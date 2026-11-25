@@ -32,9 +32,9 @@ button:hover{background:#fff2}
 <div id="hud"><div><b id="cr">100</b>credits</div><div><b id="rd">0</b>rounds</div><div><b id="wn">0</b>wins</div><div><b id="wr">-</b>win rate</div></div></div>
 <div id="bot"><div id="msg"></div><div id="hist"></div>
 <div class="row"><button id="reset">Reset</button><button id="rules">Rules and odds</button></div>
-<div id="odds">Free play credits only. No deposits, no cash-out, no prizes. Your win chance each round is 30% (3 in 10). Stake 10, win returns 20.</div></div>
+<div id="odds">Free play credits only. No deposits, no cash-out, no prizes. Your win chance each round is 30% (3 in 10). Stake 10, a win returns 20 in total (net +10).</div></div>
 <div id="dlg"><div><h2>Rules and odds</h2>
-<p>You start with 100 play credits. Each round costs 10. A win returns 20, so a win is a net gain of 10.</p>
+<p>You start with 100 play credits. Each round costs 10. A win returns 20 credits in total (your 10 stake plus 10 more), a net gain of 10. A loss costs the 10 stake.</p>
 <p><b>Your win chance is 30% every round (3 outcomes in 10 win).</b> The result is drawn by your browser's secure random generator. The probe flight is only animation. Which planet you pick and how the probe flies do not change the odds: 3 of the 10 planets are beacon worlds, drawn at random each round.</p>
 <p>Over many rounds you get back about 6 credits for every 10 you stake, so credits tend to go down. That is how the numbers are set, and it is why this is for fun only.</p>
 <p>Play credits have no value. They cannot be bought, withdrawn, redeemed or traded. Nothing here is real money or a prize. A short break note appears every 25 rounds.</p>
@@ -61,7 +61,7 @@ function begin(){
 function finish(win){
  S.rounds++;if(win){S.wins++;S.credits+=PAY}
  S.hist.push(win);S.busy=false;hud();
- let m=win?'Win. 20 play credits returned.':'No win this round. 10 play credits spent.';
+ let m=win?'Win. 20 play credits returned in total (net +10 after the 10 stake).':'No win this round. The 10 stake is gone.';
  if(S.credits<STAKE)m+=' Out of credits. Reset to play again.';
  else if(S.rounds%25===0)m+=' 25 rounds played. Good moment for a break.';
  say(m);
@@ -153,7 +153,7 @@ function draw(dt){
    const sp=(el-T);const rr=sp*160;g.strokeStyle=`rgba(140,220,255,${Math.max(0,1-sp/1.2)})`;g.lineWidth=3;g.beginPath();g.arc(tx,ty,rr,0,6.28);g.stroke();
    g.fillStyle='rgba(200,235,255,.9)';g.font='12px system-ui';g.textAlign='center';g.fillText('scanning...',tx,ty-p_s(sel)*2.6);
    if(sp>=1.0){st='done';t0=t;result=K.S.winners.has(sel);if(result)for(let k=0;k<80;k++){const a=Math.random()*6.28,v=40+Math.random()*180;sparks.push({x:tx,y:ty,vx:Math.cos(a)*v,vy:Math.sin(a)*v,l:1.4,m:1.4})}
-    K.finish(result);K.say((result?'Beacon found. You win 20 play credits. ':'Silent world. ')+'3 of 10 planets were beacon worlds, shown now. '+document.getElementById('msg').textContent.replace(/^(Win\.|No win)[^.]*\.\s?/,'').trim()+' Tap for the next round.')}}
+    K.finish(result);K.say((result?'Beacon found. Win: 20 play credits returned (net +10). ':'Silent world. ')+'3 of 10 planets were beacon worlds, shown now. '+document.getElementById('msg').textContent.replace(/^(Win\.|No win)[^.]*\.\s?/,'').trim()+' Tap for the next round.')}}
  }
  trail=trail.filter(q=>(q.l-=dt)>0);
  if(done&&result){const q=pp[sel];g.globalCompositeOperation='lighter';
