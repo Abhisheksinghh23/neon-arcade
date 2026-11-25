@@ -32,9 +32,9 @@ button:hover{background:#fff2}
 <div id="hud"><div><b id="cr">100</b>credits</div><div><b id="rd">0</b>rounds</div><div><b id="wn">0</b>wins</div><div><b id="wr">-</b>win rate</div></div></div>
 <div id="bot"><div id="msg"></div><div id="hist"></div>
 <div class="row"><button id="reset">Reset</button><button id="rules">Rules and odds</button></div>
-<div id="odds">Free play credits only. No deposits, no cash-out, no prizes. Your win chance each round is 30% (3 in 10). Stake 10, win returns 20.</div></div>
+<div id="odds">Free play credits only. No deposits, no cash-out, no prizes. Your win chance each round is 30% (3 in 10). Stake 10, a win returns 20 in total (net +10).</div></div>
 <div id="dlg"><div><h2>Rules and odds</h2>
-<p>You start with 100 play credits. Each round costs 10. A win returns 20, so a win is a net gain of 10.</p>
+<p>You start with 100 play credits. Each round costs 10. A win returns 20 credits in total (your 10 stake plus 10 more), a net gain of 10. A loss costs the 10 stake.</p>
 <p><b>Your win chance is 30% every round (3 outcomes in 10 win).</b> The result is drawn by your browser's secure random generator. The lever pull is only animation. One lock out of 10 is drawn at random and 3 of the 10 are open, so nothing you do changes the odds.</p>
 <p>Over many rounds you get back about 6 credits for every 10 you stake, so credits tend to go down. That is how the numbers are set, and it is why this is for fun only.</p>
 <p>Play credits have no value. They cannot be bought, withdrawn, redeemed or traded. Nothing here is real money or a prize. A short break note appears every 25 rounds.</p>
@@ -61,7 +61,7 @@ function begin(){
 function finish(win){
  S.rounds++;if(win){S.wins++;S.credits+=PAY}
  S.hist.push(win);S.busy=false;hud();
- let m=win?'Win. 20 play credits returned.':'No win this round. 10 play credits spent.';
+ let m=win?'Win. 20 play credits returned in total (net +10 after the 10 stake).':'No win this round. The 10 stake is gone.';
  if(S.credits<STAKE)m+=' Out of credits. Reset to play again.';
  else if(S.rounds%25===0)m+=' 25 rounds played. Good moment for a break.';
  say(m);
@@ -146,7 +146,7 @@ function draw(dt){
   if(Math.random()<dt*30)steam.push({x:cx+R*1.2,y:cy+R*1.0,vx:(Math.random()-.5)*20,vy:-40-Math.random()*40,l:1.4,m:1.4,r:6});
   if(el>2.6){st='done';t0=t;result=K.S.winners.has(pick);lever=0;
    for(let i=0;i<10;i++)if(K.S.winners.has(i)){const p=lockPos(i,Gm);for(let k=0;k<10;k++){const a=Math.random()*6.28;sparks.push({x:p.x,y:p.y,vx:Math.cos(a)*90,vy:Math.sin(a)*90,l:.9,m:.9})}}
-   K.finish(result);K.say((result?'Lock open. You win 20 play credits. ':'Lock stayed shut. ')+'3 of 10 locks were open, shown now. '+document.getElementById('msg').textContent.replace(/^(Win\.|No win)[^.]*\.\s?/,'').trim()+' Tap for the next round.')}
+   K.finish(result);K.say((result?'Lock open. Win: 20 play credits returned (net +10). ':'Lock stayed shut. ')+'3 of 10 locks were open, shown now. '+document.getElementById('msg').textContent.replace(/^(Win\.|No win)[^.]*\.\s?/,'').trim()+' Tap for the next round.')}
  }
  if(st==='done'){lever=Math.max(0,lever-dt*2)}
  g.globalCompositeOperation='lighter';
