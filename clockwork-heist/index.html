@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Clockwork Heist</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#0b0705;color:#eef;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
+#top{position:fixed;left:0;right:0;top:0;padding:10px 12px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;pointer-events:none}
+#ttl{font-weight:800;letter-spacing:.14em;text-transform:uppercase;font-size:clamp(14px,3.6vw,22px);text-shadow:0 0 14px #d89a3a;color:#f3cf8a}
+#ttl small{display:block;font-weight:500;letter-spacing:.04em;text-transform:none;font-size:11px;color:#aab;text-shadow:none}
+#hud{display:flex;gap:8px;font-size:12px;text-align:center}
+#hud div{background:#0008;border:1px solid #fff2;border-radius:10px;padding:5px 9px;backdrop-filter:blur(4px)}
+@media(max-width:600px){#ttl small{display:none}#ttl{font-size:13px;max-width:34vw}#hud{gap:4px;font-size:10px}#hud div{padding:4px 6px}#hud b{font-size:14px!important}}
+#hud b{display:block;font-size:17px;color:#f3cf8a}
+#bot{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:7px;background:linear-gradient(transparent,#000a 60%)}
+#msg{font-size:14px;text-align:center;min-height:19px;text-shadow:0 1px 4px #000}
+#hist{display:flex;gap:4px;min-height:9px}
+#hist i{width:9px;height:9px;border-radius:50%;display:block}
+#hist i.w{background:#ffd75e;box-shadow:0 0 8px #ffd75e}#hist i.l{background:#445}
+.row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+button{font:inherit;font-size:13px;color:#eef;background:#fff1;border:1px solid #fff3;border-radius:999px;padding:7px 14px;cursor:pointer}
+button:hover{background:#fff2}
+#odds{font-size:11px;color:#9ab;text-align:center;max-width:560px}
+#dlg{position:fixed;inset:0;background:#000b;display:none;align-items:center;justify-content:center;padding:18px}
+#dlg.on{display:flex}
+#dlg div{max-width:460px;background:#14151f;border:1px solid #fff3;border-radius:14px;padding:18px;font-size:14px;line-height:1.5}
+#dlg h2{margin:0 0 8px;font-size:17px}#dlg p{margin:6px 0}
+</style></head><body>
+<canvas id="scene"></canvas>
+<div id="top"><div id="ttl">Clockwork Heist<small>Pull the lever. Chance game, play credits only.</small></div>
+<div id="hud"><div><b id="cr">100</b>credits</div><div><b id="rd">0</b>rounds</div><div><b id="wn">0</b>wins</div><div><b id="wr">-</b>win rate</div></div></div>
+<div id="bot"><div id="msg"></div><div id="hist"></div>
+<div class="row"><button id="reset">Reset</button><button id="rules">Rules and odds</button></div>
+<div id="odds">Free play credits only. No deposits, no cash-out, no prizes. Your win chance each round is 30% (3 in 10). Stake 10, win returns 20.</div></div>
+<div id="dlg"><div><h2>Rules and odds</h2>
+<p>You start with 100 play credits. Each round costs 10. A win returns 20, so a win is a net gain of 10.</p>
+<p><b>Your win chance is 30% every round (3 outcomes in 10 win).</b> The result is drawn by your browser's secure random generator. The lever pull is only animation. One lock out of 10 is drawn at random and 3 of the 10 are open, so nothing you do changes the odds.</p>
+<p>Over many rounds you get back about 6 credits for every 10 you stake, so credits tend to go down. That is how the numbers are set, and it is why this is for fun only.</p>
+<p>Play credits have no value. They cannot be bought, withdrawn, redeemed or traded. Nothing here is real money or a prize. A short break note appears every 25 rounds.</p>
+<button id="close">Close</button></div></div>
+<script>
+/* shared play-credit kit for chance games */
+const Kit=(function(){
+const STAKE=10,PAY=20,START=100,N=10,WIN=3;
+const S={credits:START,rounds:0,wins:0,hist:[],busy:false,winners:null,over:false};
+function rnd(n){const m=Math.floor(4294967296/n)*n;const a=new Uint32Array(1);do{crypto.getRandomValues(a)}while(a[0]>=m);return a[0]%n}
+function draw(){const s=new Set();while(s.size<WIN)s.add(rnd(N));return s}
+const $=id=>document.getElementById(id);
+function hud(){
+ $('cr').textContent=S.credits;$('rd').textContent=S.rounds;$('wn').textContent=S.wins;
+ $('wr').textContent=S.rounds?Math.round(100*S.wins/S.rounds)+'%':'-';
+ const h=$('hist');h.innerHTML='';S.hist.slice(-20).forEach(w=>{const d=document.createElement('i');d.className=w?'w':'l';h.appendChild(d)});
+}
+function say(t){$('msg').textContent=t}
+function begin(){
+ if(S.busy)return false;
+ if(S.credits<STAKE){say('Out of play credits. Press Reset to start over with 100.');return false}
+ S.credits-=STAKE;S.busy=true;S.winners=draw();hud();return true;
+}
+function finish(win){
+ S.rounds++;if(win){S.wins++;S.credits+=PAY}
+ S.hist.push(win);S.busy=false;hud();
+ let m=win?'Win. 20 play credits returned.':'No win this round. 10 play credits spent.';
+ if(S.credits<STAKE)m+=' Out of credits. Reset to play again.';
+ else if(S.rounds%25===0)m+=' 25 rounds played. Good moment for a break.';
+ say(m);
+}
+function reset(){if(S.busy)return;S.credits=START;S.rounds=0;S.wins=0;S.hist=[];hud();say('Reset. 100 play credits.')}
+function fit(c){
+ const dpr=Math.min(2,window.devicePixelRatio||1);
+ const r=c.getBoundingClientRect();c.width=Math.round(r.width*dpr);c.height=Math.round(r.height*dpr);
+ const x=c.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);return {x,w:r.width,h:r.height};
+}
+function boot(init){
+ const c=$('scene');let V=fit(c);
+ const api={get w(){return V.w},get h(){return V.h},get x(){return V.x},canvas:c};
+ addEventListener('resize',()=>{V=fit(c)});
+ $('reset').onclick=reset;
+ $('rules').onclick=()=>$('dlg').classList.add('on');
+ $('close').onclick=()=>$('dlg').classList.remove('on');
+ hud();say('Pick a lantern to start. Each round costs 10 play credits.');
+ init(api,Kit);
+}
+return {S,rnd,begin,finish,boot,say,STAKE,PAY,N,WIN};
+})();
+
+function init(A,K){
+const c=A.canvas;let t=0,last=performance.now();
+const ease=p=>p<0?0:p>1?1:p*p*(3-2*p);
+let st='idle',t0=0,pick=-1,result=null,steam=[],sparks=[],spin=0,spinV=.15,lever=0;
+const dust=[...Array(40)].map(()=>({x:Math.random(),y:Math.random(),s:Math.random()+.2}));
+function G(){const w=A.w,h=A.h;const R=Math.min(w*.4,h*.34);const cx=w/2-(w>h?R*.3:0),cy=h*.42,al0=R*.45;return{w,h,R,cx,cy,lx:w<h?w*.76:Math.min(w-34,cx+R*1.25+10),ly:w<h?cy+R+al0*.9+14:cy+R*.55,al:w<h?al0:R*.75}}
+function gear(g,x,y,r,teeth,rot,c1,c2,hole){
+ g.save();g.translate(x,y);g.rotate(rot);
+ g.beginPath();const n=teeth*2;
+ for(let i=0;i<n;i++){const a0=i/n*6.28318,a1=(i+1)/n*6.28318;const rr=i%2?r*.86:r;g.lineTo(Math.cos(a0)*rr,Math.sin(a0)*rr);g.lineTo(Math.cos((a0+a1)/2)*rr,Math.sin((a0+a1)/2)*rr)}
+ g.closePath();const gr=g.createLinearGradient(-r,-r,r,r);gr.addColorStop(0,c1);gr.addColorStop(1,c2);g.fillStyle=gr;g.fill();
+ g.strokeStyle='rgba(0,0,0,.45)';g.lineWidth=2;g.stroke();
+ g.beginPath();g.arc(0,0,r*.62,0,6.28);g.strokeStyle='rgba(0,0,0,.25)';g.stroke();
+ for(let k=0;k<5;k++){g.save();g.rotate(k*1.2566);g.fillStyle='rgba(20,10,0,.5)';g.beginPath();g.arc(r*.38,0,r*.12,0,6.28);g.fill();g.restore()}
+ g.beginPath();g.arc(0,0,r*(hole||.14),0,6.28);g.fillStyle='#1a1008';g.fill();
+ g.restore();
+}
+function lockPos(i,Gm){const a=-1.5708+i/10*6.28318;return{x:Gm.cx+Math.cos(a)*Gm.R*.78,y:Gm.cy+Math.sin(a)*Gm.R*.78,a}}
+function lock(g,x,y,r,open,hl,gl){
+ g.save();g.translate(x,y);
+ if(gl>0){g.globalCompositeOperation='lighter';const q=g.createRadialGradient(0,0,r*.2,0,0,r*3);q.addColorStop(0,`rgba(255,215,100,${.7*gl})`);q.addColorStop(1,'rgba(255,215,100,0)');g.fillStyle=q;g.fillRect(-r*3,-r*3,r*6,r*6);g.globalCompositeOperation='source-over'}
+ g.fillStyle=open?'#d9a73c':'#3c2a1a';g.strokeStyle='#e8c46e';g.lineWidth=2;
+ g.beginPath();g.arc(0,0,r,0,6.28);g.fill();g.stroke();
+ g.strokeStyle=open?'#fff3b0':'#9a7a45';g.lineWidth=r*.18;g.beginPath();g.arc(0,-r*(open?.62:.35),r*.38,Math.PI,6.28);g.stroke();
+ g.fillStyle=open?'#7a4f00':'#120a04';g.beginPath();g.arc(0,r*.1,r*.2,0,6.28);g.fill();g.fillRect(-r*.05,r*.1,r*.1,r*.4);
+ if(hl){g.strokeStyle='#bff';g.lineWidth=3;g.setLineDash([4,4]);g.beginPath();g.arc(0,0,r*1.35,0,6.28);g.stroke();g.setLineDash([])}
+ g.restore();
+}
+function draw(dt){
+ const g=A.x,Gm=G(),{w,h,R,cx,cy}=Gm;t+=dt;const el=t-t0;
+ const bgr=g.createLinearGradient(0,0,0,h);bgr.addColorStop(0,'#140c07');bgr.addColorStop(1,'#080402');g.fillStyle=bgr;g.fillRect(0,0,w,h);
+ // brick lines
+ g.strokeStyle='rgba(255,180,90,.05)';g.lineWidth=1;for(let y=0;y<h;y+=34){g.beginPath();g.moveTo(0,y);g.lineTo(w,y);g.stroke();for(let x=(y/34%2)*34;x<w;x+=68){g.beginPath();g.moveTo(x,y);g.lineTo(x,y+34);g.stroke()}}
+ let sv=st==='anim'?Math.min(1,el/1.2)*(el<2.4?1:Math.max(0,1-(el-2.4)/.4))*5:spinV;
+ spin+=dt*sv;
+ gear(g,cx-R*1.05,cy-R*.85,R*.5,14,-spin*.8,'#8a6430','#3d2a12');
+ gear(g,cx+R*1.1,cy-R*.9,R*.38,11,spin*1.1,'#a77a3a','#4a3416');
+ gear(g,cx-R*1.0,cy+R*.95,R*.36,10,spin*1.2,'#8a6430','#3d2a12');
+ // vault door
+ const dg=g.createRadialGradient(cx-R*.3,cy-R*.3,R*.1,cx,cy,R*1.05);dg.addColorStop(0,'#caa05a');dg.addColorStop(.6,'#7b5628');dg.addColorStop(1,'#2e1d0b');
+ g.fillStyle=dg;g.beginPath();g.arc(cx,cy,R,0,6.28);g.fill();
+ g.strokeStyle='#e0b86a';g.lineWidth=3;g.stroke();
+ g.strokeStyle='rgba(0,0,0,.4)';g.lineWidth=2;g.beginPath();g.arc(cx,cy,R*.9,0,6.28);g.stroke();g.beginPath();g.arc(cx,cy,R*.58,0,6.28);g.stroke();
+ for(let i=0;i<24;i++){const a=i/24*6.28;g.fillStyle='#e8c88a';g.beginPath();g.arc(cx+Math.cos(a)*R*.95,cy+Math.sin(a)*R*.95,2.2,0,6.28);g.fill()}
+ gear(g,cx,cy,R*.46,16,spin,'#d6a959','#6d4a1e',.18);
+ // locks
+ const done=st==='done';
+ for(let i=0;i<10;i++){const p=lockPos(i,Gm);const op=done&&K.S.winners.has(i);
+  lock(g,p.x,p.y,R*.12,op,done&&i===pick,op?Math.min(1,el/.6):0)}
+ // lever
+ const la=(-.7+lever*1.4);const {lx,ly,al}=Gm;
+ g.save();g.translate(lx,ly);g.fillStyle='#2a1a0c';g.strokeStyle='#d6a959';g.lineWidth=2;g.beginPath();g.roundRect(-18,0,36,26,6);g.fill();g.stroke();
+ g.rotate(la);g.strokeStyle='#caa05a';g.lineWidth=9;g.lineCap='round';g.beginPath();g.moveTo(0,0);g.lineTo(0,-al);g.stroke();
+ g.fillStyle='#b8312a';g.beginPath();g.arc(0,-al,15,0,6.28);g.fill();g.strokeStyle='#ffb0a8';g.lineWidth=2;g.stroke();g.restore();
+ // anim logic
+ if(st==='anim'){
+  lever=ease(el/.5);
+  if(Math.random()<dt*30)steam.push({x:cx-R*1.2+Math.random()*10,y:cy+R*1.0,vx:(Math.random()-.5)*20,vy:-40-Math.random()*40,l:1.4,m:1.4,r:6});
+  if(Math.random()<dt*30)steam.push({x:cx+R*1.2,y:cy+R*1.0,vx:(Math.random()-.5)*20,vy:-40-Math.random()*40,l:1.4,m:1.4,r:6});
+  if(el>2.6){st='done';t0=t;result=K.S.winners.has(pick);lever=0;
+   for(let i=0;i<10;i++)if(K.S.winners.has(i)){const p=lockPos(i,Gm);for(let k=0;k<10;k++){const a=Math.random()*6.28;sparks.push({x:p.x,y:p.y,vx:Math.cos(a)*90,vy:Math.sin(a)*90,l:.9,m:.9})}}
+   K.finish(result);K.say((result?'Lock open. You win 20 play credits. ':'Lock stayed shut. ')+'3 of 10 locks were open, shown now. '+document.getElementById('msg').textContent.replace(/^(Win\.|No win)[^.]*\.\s?/,'').trim()+' Tap for the next round.')}
+ }
+ if(st==='done'){lever=Math.max(0,lever-dt*2)}
+ g.globalCompositeOperation='lighter';
+ for(let i=steam.length-1;i>=0;i--){const p=steam[i];p.l-=dt;if(p.l<=0){steam.splice(i,1);continue}p.x+=p.vx*dt;p.y+=p.vy*dt;p.r+=dt*14;const a=p.l/p.m*.14;g.fillStyle=`rgba(230,220,200,${a})`;g.beginPath();g.arc(p.x,p.y,p.r,0,6.28);g.fill()}
+ for(let i=sparks.length-1;i>=0;i--){const p=sparks[i];p.l-=dt;if(p.l<=0){sparks.splice(i,1);continue}p.x+=p.vx*dt;p.y+=p.vy*dt;g.fillStyle=`rgba(255,215,110,${p.l/p.m})`;g.beginPath();g.arc(p.x,p.y,2.2,0,6.28);g.fill()}
+ for(const d of dust){d.y-=dt*.01*d.s;if(d.y<0)d.y=1;g.fillStyle='rgba(255,200,120,.25)';g.fillRect(d.x*w,d.y*h,1.5,1.5)}
+ g.globalCompositeOperation='source-over';
+ if(st==='anim'){g.fillStyle='rgba(255,230,180,.9)';g.font='13px system-ui';g.textAlign='center';g.fillText(el<1.4?'Gears turning... drawing one lock':'Settling...',cx,cy+R*1.28)}
+ if(st==='anim'&&K.S.winners)K.say('Lever pulled. Gears turning. Tap to skip the animation.');
+}
+c.addEventListener('pointerdown',e=>{
+ if(st==='idle'){if(!K.begin())return;pick=K.rnd(10);st='anim';t0=t;result=null}
+ else if(st==='anim'){t0=t-2.6}
+ else if(st==='done'&&t-t0>.5){st='idle';pick=-1;result=null;K.say(K.S.credits<K.STAKE?'Out of play credits. Press Reset to start over with 100.':'Pull the lever. Each round costs 10 play credits.')}
+});
+K.say('Tap the lever or the vault to pull. One pull draws one lock. Each round costs 10 play credits.');
+function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;draw(dt);requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+}
+
+Kit.boot(init);
+</script></body></html>
