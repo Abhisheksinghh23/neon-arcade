@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Orbit Beacon</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#02030a;color:#eef;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
+#top{position:fixed;left:0;right:0;top:0;padding:10px 12px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;pointer-events:none}
+#ttl{font-weight:800;letter-spacing:.14em;text-transform:uppercase;font-size:clamp(14px,3.6vw,22px);text-shadow:0 0 14px #6aa8ff;color:#a9d0ff}
+#ttl small{display:block;font-weight:500;letter-spacing:.04em;text-transform:none;font-size:11px;color:#aab;text-shadow:none}
+#hud{display:flex;gap:8px;font-size:12px;text-align:center}
+#hud div{background:#0008;border:1px solid #fff2;border-radius:10px;padding:5px 9px;backdrop-filter:blur(4px)}
+@media(max-width:600px){#ttl small{display:none}#ttl{font-size:13px;max-width:34vw}#hud{gap:4px;font-size:10px}#hud div{padding:4px 6px}#hud b{font-size:14px!important}}
+#hud b{display:block;font-size:17px;color:#a9d0ff}
+#bot{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:7px;background:linear-gradient(transparent,#000a 60%)}
+#msg{font-size:14px;text-align:center;min-height:19px;text-shadow:0 1px 4px #000}
+#hist{display:flex;gap:4px;min-height:9px}
+#hist i{width:9px;height:9px;border-radius:50%;display:block}
+#hist i.w{background:#ffd75e;box-shadow:0 0 8px #ffd75e}#hist i.l{background:#445}
+.row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+button{font:inherit;font-size:13px;color:#eef;background:#fff1;border:1px solid #fff3;border-radius:999px;padding:7px 14px;cursor:pointer}
+button:hover{background:#fff2}
+#odds{font-size:11px;color:#9ab;text-align:center;max-width:560px}
+#dlg{position:fixed;inset:0;background:#000b;display:none;align-items:center;justify-content:center;padding:18px}
+#dlg.on{display:flex}
+#dlg div{max-width:460px;background:#14151f;border:1px solid #fff3;border-radius:14px;padding:18px;font-size:14px;line-height:1.5}
+#dlg h2{margin:0 0 8px;font-size:17px}#dlg p{margin:6px 0}
+</style></head><body>
+<canvas id="scene"></canvas>
+<div id="top"><div id="ttl">Orbit Beacon<small>Send a probe. Chance game, play credits only.</small></div>
+<div id="hud"><div><b id="cr">100</b>credits</div><div><b id="rd">0</b>rounds</div><div><b id="wn">0</b>wins</div><div><b id="wr">-</b>win rate</div></div></div>
+<div id="bot"><div id="msg"></div><div id="hist"></div>
+<div class="row"><button id="reset">Reset</button><button id="rules">Rules and odds</button></div>
+<div id="odds">Free play credits only. No deposits, no cash-out, no prizes. Your win chance each round is 30% (3 in 10). Stake 10, win returns 20.</div></div>
+<div id="dlg"><div><h2>Rules and odds</h2>
+<p>You start with 100 play credits. Each round costs 10. A win returns 20, so a win is a net gain of 10.</p>
+<p><b>Your win chance is 30% every round (3 outcomes in 10 win).</b> The result is drawn by your browser's secure random generator. The probe flight is only animation. Which planet you pick and how the probe flies do not change the odds: 3 of the 10 planets are beacon worlds, drawn at random each round.</p>
+<p>Over many rounds you get back about 6 credits for every 10 you stake, so credits tend to go down. That is how the numbers are set, and it is why this is for fun only.</p>
+<p>Play credits have no value. They cannot be bought, withdrawn, redeemed or traded. Nothing here is real money or a prize. A short break note appears every 25 rounds.</p>
+<button id="close">Close</button></div></div>
+<script>
+/* shared play-credit kit for chance games */
+const Kit=(function(){
+const STAKE=10,PAY=20,START=100,N=10,WIN=3;
+const S={credits:START,rounds:0,wins:0,hist:[],busy:false,winners:null,over:false};
+function rnd(n){const m=Math.floor(4294967296/n)*n;const a=new Uint32Array(1);do{crypto.getRandomValues(a)}while(a[0]>=m);return a[0]%n}
+function draw(){const s=new Set();while(s.size<WIN)s.add(rnd(N));return s}
+const $=id=>document.getElementById(id);
+function hud(){
+ $('cr').textContent=S.credits;$('rd').textContent=S.rounds;$('wn').textContent=S.wins;
+ $('wr').textContent=S.rounds?Math.round(100*S.wins/S.rounds)+'%':'-';
+ const h=$('hist');h.innerHTML='';S.hist.slice(-20).forEach(w=>{const d=document.createElement('i');d.className=w?'w':'l';h.appendChild(d)});
+}
+function say(t){$('msg').textContent=t}
+function begin(){
+ if(S.busy)return false;
+ if(S.credits<STAKE){say('Out of play credits. Press Reset to start over with 100.');return false}
+ S.credits-=STAKE;S.busy=true;S.winners=draw();hud();return true;
+}
+function finish(win){
+ S.rounds++;if(win){S.wins++;S.credits+=PAY}
+ S.hist.push(win);S.busy=false;hud();
+ let m=win?'Win. 20 play credits returned.':'No win this round. 10 play credits spent.';
+ if(S.credits<STAKE)m+=' Out of credits. Reset to play again.';
+ else if(S.rounds%25===0)m+=' 25 rounds played. Good moment for a break.';
+ say(m);
+}
+function reset(){if(S.busy)return;S.credits=START;S.rounds=0;S.wins=0;S.hist=[];hud();say('Reset. 100 play credits.')}
+function fit(c){
+ const dpr=Math.min(2,window.devicePixelRatio||1);
+ const r=c.getBoundingClientRect();c.width=Math.round(r.width*dpr);c.height=Math.round(r.height*dpr);
+ const x=c.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);return {x,w:r.width,h:r.height};
+}
+function boot(init){
+ const c=$('scene');let V=fit(c);
+ const api={get w(){return V.w},get h(){return V.h},get x(){return V.x},canvas:c};
+ addEventListener('resize',()=>{V=fit(c)});
+ $('reset').onclick=reset;
+ $('rules').onclick=()=>$('dlg').classList.add('on');
+ $('close').onclick=()=>$('dlg').classList.remove('on');
+ hud();say('Pick a lantern to start. Each round costs 10 play credits.');
+ init(api,Kit);
+}
+return {S,rnd,begin,finish,boot,say,STAKE,PAY,N,WIN};
+})();
+
+function init(A,K){
+const c=A.canvas;let t=0,last=performance.now();
+const ease=p=>p<0?0:p>1?1:p*p*(3-2*p);
+const cols=['#e8a468','#6fb7e8','#c8c0a8','#e86f6f','#9be0a8','#c996e8','#e8d46f','#6fe8d4','#d98fb0','#8fa3e8'];
+const P=cols.map((col,i)=>({i,col,a:.0,r:0,ph:Math.random()*6.28,sp:(.5+Math.random()*.4)/(1+i*.28),sz:9+Math.random()*9,ring:i%3===1,bands:[...Array(4)].map(()=>Math.random())}));
+const stars=[...Array(160)].map(()=>({x:Math.random(),y:Math.random(),r:Math.random()*1.4+.2,p:Math.random()*6}));
+let st='idle',sel=-1,t0=0,result=null,sparks=[],trail=[],hover=-1;
+const probe={x:0,y:0};
+function geom(){const w=A.w,h=A.h;const cx=w/2,cy=h*.46;const R=Math.min(w*.47,h*.40);return{cx,cy,R,sq:w<h?.95:.8}}
+function ppos(p,G,slow){const rad=G.R*(.22+p.i*.078);const a=p.ph+t*p.sp*(slow?.25:1);return{x:G.cx+Math.cos(a)*rad,y:G.cy+Math.sin(a)*rad*G.sq,rad}}
+function planet(g,x,y,p,glow,dim){
+ const s=p.sz*(Math.min(A.w,A.h)/420+.6);
+ if(p.ring){g.save();g.translate(x,y);g.rotate(-.35);g.strokeStyle='rgba(230,220,190,.55)';g.lineWidth=2.5;g.beginPath();g.ellipse(0,0,s*1.9,s*.55,0,Math.PI,6.28);g.stroke();g.restore()}
+ g.save();g.beginPath();g.arc(x,y,s,0,6.28);g.clip();
+ g.fillStyle=p.col;g.fillRect(x-s,y-s,2*s,2*s);
+ for(let k=0;k<4;k++){g.fillStyle=`rgba(0,0,0,${.08+p.bands[k]*.14})`;g.fillRect(x-s,y-s+k*s*.5+p.bands[k]*s*.3,2*s,s*.22)}
+ const sh=g.createRadialGradient(x-s*.4,y-s*.4,s*.1,x,y,s*1.15);sh.addColorStop(0,'rgba(255,255,255,.35)');sh.addColorStop(.55,'rgba(0,0,0,0)');sh.addColorStop(1,'rgba(0,0,0,.75)');
+ g.fillStyle=sh;g.fillRect(x-s,y-s,2*s,2*s);
+ if(dim){g.fillStyle='rgba(5,8,20,.55)';g.fillRect(x-s,y-s,2*s,2*s)}
+ g.restore();
+ if(p.ring){g.save();g.translate(x,y);g.rotate(-.35);g.strokeStyle='rgba(230,220,190,.75)';g.lineWidth=2.5;g.beginPath();g.ellipse(0,0,s*1.9,s*.55,0,0,Math.PI);g.stroke();g.restore()}
+ if(glow){g.save();g.globalCompositeOperation='lighter';const r=g.createRadialGradient(x,y,s,x,y,s*3.2);r.addColorStop(0,glow+'88');r.addColorStop(1,glow+'00');g.fillStyle=r;g.fillRect(x-s*3.2,y-s*3.2,s*6.4,s*6.4);g.restore()}
+ return s;
+}
+function draw(dt){
+ const g=A.x,w=A.w,h=A.h;t+=dt;const G=geom();const el=t-t0;
+ const bgr=g.createRadialGradient(G.cx,G.cy,10,G.cx,G.cy,Math.max(w,h));bgr.addColorStop(0,'#120c2e');bgr.addColorStop(.5,'#060818');bgr.addColorStop(1,'#010208');
+ g.fillStyle=bgr;g.fillRect(0,0,w,h);
+ // nebula
+ g.globalCompositeOperation='lighter';
+ [[.2,.3,'80,60,180'],[.8,.7,'30,120,190'],[.7,.2,'180,60,120']].forEach(([x,y,col],i)=>{const r=Math.max(w,h)*.4;const q=g.createRadialGradient(w*x,h*y+Math.sin(t*.1+i)*10,0,w*x,h*y,r);q.addColorStop(0,`rgba(${col},.16)`);q.addColorStop(1,`rgba(${col},0)`);g.fillStyle=q;g.fillRect(0,0,w,h)});
+ for(const s of stars){const a=.4+.5*Math.sin(t*.8+s.p);g.fillStyle=`rgba(255,255,255,${a*.7})`;g.fillRect(s.x*w,s.y*h,s.r,s.r)}
+ g.globalCompositeOperation='source-over';
+ // orbits
+ g.strokeStyle='rgba(140,170,255,.12)';g.lineWidth=1;
+ P.forEach(p=>{const rad=G.R*(.22+p.i*.078);g.beginPath();g.ellipse(G.cx,G.cy,rad,rad*G.sq,0,0,6.28);g.stroke()});
+ // star
+ const sr=Math.max(14,G.R*.1);g.globalCompositeOperation='lighter';
+ const sg=g.createRadialGradient(G.cx,G.cy,0,G.cx,G.cy,sr*4.5);sg.addColorStop(0,'rgba(255,250,220,1)');sg.addColorStop(.18,'rgba(255,200,100,.7)');sg.addColorStop(.5,'rgba(255,120,40,.18)');sg.addColorStop(1,'rgba(255,100,30,0)');
+ g.fillStyle=sg;g.beginPath();g.arc(G.cx,G.cy,sr*4.5,0,6.28);g.fill();
+ g.strokeStyle='rgba(255,220,150,.25)';for(let k=0;k<8;k++){const a=t*.2+k*.785;g.beginPath();g.moveTo(G.cx+Math.cos(a)*sr,G.cy+Math.sin(a)*sr);g.lineTo(G.cx+Math.cos(a)*sr*(2.6+Math.sin(t+k)*.5),G.cy+Math.sin(a)*sr*(2.6+Math.sin(t+k)*.5));g.stroke()}
+ g.globalCompositeOperation='source-over';
+ const slow=st!=='idle';
+ const pp=P.map(p=>ppos(p,G,slow));
+ // reveal data
+ const done=st==='done';
+ P.forEach((p,i)=>{
+  const q=pp[i];let glow=null,dim=false;
+  if(done){if(K.S.winners.has(i))glow='#ffd86a';else dim=i!==sel}
+  const s=planet(g,q.x,q.y,p,glow,dim);p.s=s;
+  if(i===sel&&st!=='idle'){g.strokeStyle='rgba(160,210,255,.85)';g.lineWidth=2;g.setLineDash([5,5]);g.beginPath();g.arc(q.x,q.y,s*2.1+Math.sin(t*4)*2,0,6.28);g.stroke();g.setLineDash([])}
+  else if(st==='idle'&&hover===i){g.strokeStyle='rgba(160,210,255,.6)';g.lineWidth=2;g.beginPath();g.arc(q.x,q.y,s*2,0,6.28);g.stroke()}
+ });
+ // probe
+ if(st==='anim'){
+  const T=2.0;const pr=Math.min(1,el/T);const e=ease(pr);
+  const tx=pp[sel].x,ty=pp[sel].y;const sx=G.cx,sy=h-110;
+  const mx=(sx+tx)/2+(tx>sx?-1:1)*w*.18,my=(sy+ty)/2;
+  const u=1-e;probe.x=u*u*sx+2*u*e*mx+e*e*tx;probe.y=u*u*sy+2*u*e*my+e*e*ty;
+  trail.push({x:probe.x,y:probe.y,l:.8});
+  if(pr<1){g.globalCompositeOperation='lighter';
+   for(const q of trail){const a=q.l/.8;g.fillStyle=`rgba(140,200,255,${a*.5})`;g.beginPath();g.arc(q.x,q.y,2+a*4,0,6.28);g.fill()}
+   g.globalCompositeOperation='source-over';
+   g.save();g.translate(probe.x,probe.y);g.fillStyle='#e8f2ff';g.beginPath();g.moveTo(0,-9);g.lineTo(5,6);g.lineTo(-5,6);g.closePath();g.fill();g.restore()}
+  else{ // scan pulse
+   const sp=(el-T);const rr=sp*160;g.strokeStyle=`rgba(140,220,255,${Math.max(0,1-sp/1.2)})`;g.lineWidth=3;g.beginPath();g.arc(tx,ty,rr,0,6.28);g.stroke();
+   g.fillStyle='rgba(200,235,255,.9)';g.font='12px system-ui';g.textAlign='center';g.fillText('scanning...',tx,ty-p_s(sel)*2.6);
+   if(sp>=1.0){st='done';t0=t;result=K.S.winners.has(sel);if(result)for(let k=0;k<80;k++){const a=Math.random()*6.28,v=40+Math.random()*180;sparks.push({x:tx,y:ty,vx:Math.cos(a)*v,vy:Math.sin(a)*v,l:1.4,m:1.4})}
+    K.finish(result);K.say((result?'Beacon found. You win 20 play credits. ':'Silent world. ')+'3 of 10 planets were beacon worlds, shown now. '+document.getElementById('msg').textContent.replace(/^(Win\.|No win)[^.]*\.\s?/,'').trim()+' Tap for the next round.')}}
+ }
+ trail=trail.filter(q=>(q.l-=dt)>0);
+ if(done&&result){const q=pp[sel];g.globalCompositeOperation='lighter';
+  const L=Math.max(0,1-el/2.5);const gr=g.createLinearGradient(q.x,q.y,q.x,0);gr.addColorStop(0,`rgba(255,230,140,${.8*(.4+L*.6)})`);gr.addColorStop(1,'rgba(255,230,140,0)');
+  g.fillStyle=gr;g.beginPath();g.moveTo(q.x-6,q.y);g.lineTo(q.x+6,q.y);g.lineTo(q.x+30,0);g.lineTo(q.x-30,0);g.fill();
+  for(let k=0;k<3;k++){const rr=((el*120+k*50)%150);g.strokeStyle=`rgba(255,226,130,${1-rr/150})`;g.lineWidth=2;g.beginPath();g.arc(q.x,q.y,rr,0,6.28);g.stroke()}
+  g.globalCompositeOperation='source-over'}
+ g.globalCompositeOperation='lighter';
+ for(let i=sparks.length-1;i>=0;i--){const p=sparks[i];p.l-=dt;if(p.l<=0){sparks.splice(i,1);continue}p.x+=p.vx*dt;p.y+=p.vy*dt;g.fillStyle=`rgba(255,225,130,${p.l/p.m})`;g.beginPath();g.arc(p.x,p.y,2.2,0,6.28);g.fill()}
+ g.globalCompositeOperation='source-over';
+ window.__pp=pp;
+}
+function p_s(i){return P[i].s||10}
+function pick(e){const r=c.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let b=-1,bd=1e9;(window.__pp||[]).forEach((q,i)=>{const d=Math.hypot(x-q.x,y-q.y);if(d<Math.max(28,p_s(i)*2.4)&&d<bd){bd=d;b=i}});return b}
+c.addEventListener('pointermove',e=>{hover=st==='idle'?pick(e):-1});
+c.addEventListener('pointerdown',e=>{
+ if(st==='idle'){const i=pick(e);if(i<0)return;if(!K.begin())return;sel=i;st='anim';t0=t;trail=[];K.say('Probe launched to planet '+(i+1)+'. Tap to skip the flight.')}
+ else if(st==='anim'){t0=t-3.1}
+ else if(st==='done'&&t-t0>.5){st='idle';sel=-1;result=null;K.say(K.S.credits<K.STAKE?'Out of play credits. Press Reset to start over with 100.':'Pick a planet. Each round costs 10 play credits.')}
+});
+K.say('Pick a planet to send a probe. Each round costs 10 play credits.');
+function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;draw(dt);requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+}
+
+Kit.boot(init);
+</script></body></html>
