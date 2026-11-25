@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Spirit Lantern Vault</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#05060f;color:#eef;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
+#top{position:fixed;left:0;right:0;top:0;padding:10px 12px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;pointer-events:none}
+#ttl{font-weight:800;letter-spacing:.14em;text-transform:uppercase;font-size:clamp(14px,3.6vw,22px);text-shadow:0 0 14px #ffb04a;color:#ffd98a}
+#ttl small{display:block;font-weight:500;letter-spacing:.04em;text-transform:none;font-size:11px;color:#aab;text-shadow:none}
+#hud{display:flex;gap:8px;font-size:12px;text-align:center}
+#hud div{background:#0008;border:1px solid #fff2;border-radius:10px;padding:5px 9px;backdrop-filter:blur(4px)}
+@media(max-width:600px){#ttl small{display:none}#ttl{font-size:13px;max-width:34vw}#hud{gap:4px;font-size:10px}#hud div{padding:4px 6px}#hud b{font-size:14px!important}}
+#hud b{display:block;font-size:17px;color:#ffd98a}
+#bot{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:7px;background:linear-gradient(transparent,#000a 60%)}
+#msg{font-size:14px;text-align:center;min-height:19px;text-shadow:0 1px 4px #000}
+#hist{display:flex;gap:4px;min-height:9px}
+#hist i{width:9px;height:9px;border-radius:50%;display:block}
+#hist i.w{background:#ffd75e;box-shadow:0 0 8px #ffd75e}#hist i.l{background:#445}
+.row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+button{font:inherit;font-size:13px;color:#eef;background:#fff1;border:1px solid #fff3;border-radius:999px;padding:7px 14px;cursor:pointer}
+button:hover{background:#fff2}
+#odds{font-size:11px;color:#9ab;text-align:center;max-width:560px}
+#dlg{position:fixed;inset:0;background:#000b;display:none;align-items:center;justify-content:center;padding:18px}
+#dlg.on{display:flex}
+#dlg div{max-width:460px;background:#14151f;border:1px solid #fff3;border-radius:14px;padding:18px;font-size:14px;line-height:1.5}
+#dlg h2{margin:0 0 8px;font-size:17px}#dlg p{margin:6px 0}
+</style></head><body>
+<canvas id="scene"></canvas>
+<div id="top"><div id="ttl">Spirit Lantern Vault<small>Pick a lantern. Chance game, play credits only.</small></div>
+<div id="hud"><div><b id="cr">100</b>credits</div><div><b id="rd">0</b>rounds</div><div><b id="wn">0</b>wins</div><div><b id="wr">-</b>win rate</div></div></div>
+<div id="bot"><div id="msg"></div><div id="hist"></div>
+<div class="row"><button id="reset">Reset</button><button id="rules">Rules and odds</button></div>
+<div id="odds">Free play credits only. No deposits, no cash-out, no prizes. Your win chance each round is 30% (3 in 10). Stake 10, win returns 20.</div></div>
+<div id="dlg"><div><h2>Rules and odds</h2>
+<p>You start with 100 play credits. Each round costs 10. A win returns 20, so a win is a net gain of 10.</p>
+<p><b>Your win chance is 30% every round (3 outcomes in 10 win).</b> The result is drawn by your browser's secure random generator. Which lantern you pick does not change the odds. The page says so because it is true: the 3 spirit lanterns are drawn at random each round.</p>
+<p>Over many rounds you get back about 6 credits for every 10 you stake, so credits tend to go down. That is how the numbers are set, and it is why this is for fun only.</p>
+<p>Play credits have no value. They cannot be bought, withdrawn, redeemed or traded. Nothing here is real money or a prize. A short break note appears every 25 rounds.</p>
+<button id="close">Close</button></div></div>
+<script>
+/* shared play-credit kit for chance games */
+const Kit=(function(){
+const STAKE=10,PAY=20,START=100,N=10,WIN=3;
+const S={credits:START,rounds:0,wins:0,hist:[],busy:false,winners:null,over:false};
+function rnd(n){const m=Math.floor(4294967296/n)*n;const a=new Uint32Array(1);do{crypto.getRandomValues(a)}while(a[0]>=m);return a[0]%n}
+function draw(){const s=new Set();while(s.size<WIN)s.add(rnd(N));return s}
+const $=id=>document.getElementById(id);
+function hud(){
+ $('cr').textContent=S.credits;$('rd').textContent=S.rounds;$('wn').textContent=S.wins;
+ $('wr').textContent=S.rounds?Math.round(100*S.wins/S.rounds)+'%':'-';
+ const h=$('hist');h.innerHTML='';S.hist.slice(-20).forEach(w=>{const d=document.createElement('i');d.className=w?'w':'l';h.appendChild(d)});
+}
+function say(t){$('msg').textContent=t}
+function begin(){
+ if(S.busy)return false;
+ if(S.credits<STAKE){say('Out of play credits. Press Reset to start over with 100.');return false}
+ S.credits-=STAKE;S.busy=true;S.winners=draw();hud();return true;
+}
+function finish(win){
+ S.rounds++;if(win){S.wins++;S.credits+=PAY}
+ S.hist.push(win);S.busy=false;hud();
+ let m=win?'Win. 20 play credits returned.':'No win this round. 10 play credits spent.';
+ if(S.credits<STAKE)m+=' Out of credits. Reset to play again.';
+ else if(S.rounds%25===0)m+=' 25 rounds played. Good moment for a break.';
+ say(m);
+}
+function reset(){if(S.busy)return;S.credits=START;S.rounds=0;S.wins=0;S.hist=[];hud();say('Reset. 100 play credits.')}
+function fit(c){
+ const dpr=Math.min(2,window.devicePixelRatio||1);
+ const r=c.getBoundingClientRect();c.width=Math.round(r.width*dpr);c.height=Math.round(r.height*dpr);
+ const x=c.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);return {x,w:r.width,h:r.height};
+}
+function boot(init){
+ const c=$('scene');let V=fit(c);
+ const api={get w(){return V.w},get h(){return V.h},get x(){return V.x},canvas:c};
+ addEventListener('resize',()=>{V=fit(c)});
+ $('reset').onclick=reset;
+ $('rules').onclick=()=>$('dlg').classList.add('on');
+ $('close').onclick=()=>$('dlg').classList.remove('on');
+ hud();say('Pick a lantern to start. Each round costs 10 play credits.');
+ init(api,Kit);
+}
+return {S,rnd,begin,finish,boot,say,STAKE,PAY,N,WIN};
+})();
+
+function init(A,K){
+const c=A.canvas;let t=0,last=performance.now();
+let st='idle',sel=-1,t0=0,result=null,pos=[];
+const ff=[...Array(70)].map(()=>({x:Math.random(),y:Math.random(),p:Math.random()*6.28,s:.3+Math.random()*.7,r:.8+Math.random()*1.8}));
+const mist=[...Array(7)].map((_,i)=>({x:Math.random(),y:.35+Math.random()*.55,r:.25+Math.random()*.3,sp:.004+Math.random()*.01,a:.05+Math.random()*.07}));
+const sparks=[];
+const ease=p=>p<0?0:p>1?1:p*p*(3-2*p);
+function layout(){
+ const w=A.w,h=A.h,cols=w<h*.8?2:5,rows=10/cols;
+ const top=h<500?70:92,bot=h-120;
+ const cw=w/cols,ch=(bot-top)/rows;
+ const s=Math.max(.5,Math.min(cw*.32,ch*.3)/38);
+ pos=[];
+ for(let i=0;i<10;i++){const r=Math.floor(i/cols),q=i%cols;pos.push({x:cw*(q+.5)+((r%2)?cw*.0:0),y:top+ch*(r+.5)+ (q%2?ch*.07:-ch*.04),s})}
+}
+function lantern(x,y,s,warm,glow,alpha,dark){
+ const g=A.x;g.save();g.globalAlpha=alpha;g.translate(x,y);g.scale(s,s);
+ // rope
+ // glow
+ if(glow>0){g.globalCompositeOperation='lighter';
+  const r=g.createRadialGradient(0,0,4,0,0,95*(.6+glow*.5));
+  r.addColorStop(0,`rgba(${warm},${.32*glow})`);r.addColorStop(1,`rgba(${warm},0)`);
+  g.fillStyle=r;g.fillRect(-150,-150,300,300);g.globalCompositeOperation='source-over'}
+ // caps
+ g.fillStyle='#2a1d17';g.fillRect(-18,-44,36,8);g.fillRect(-20,36,40,8);
+ g.fillStyle='#4b3426';g.fillRect(-14,-52,28,8);
+ // body
+ const b=g.createLinearGradient(-30,0,30,0);
+ const lit=dark?'#3a3a52':`rgba(${warm},1)`;
+ b.addColorStop(0,'#401a18');b.addColorStop(.5,lit);b.addColorStop(1,'#401a18');
+ g.fillStyle=b;g.beginPath();g.moveTo(-17,-36);g.bezierCurveTo(-40,-14,-40,14,-17,36);g.lineTo(17,36);g.bezierCurveTo(40,14,40,-14,17,-36);g.closePath();g.fill();
+ g.strokeStyle='#0006';g.lineWidth=1.3;
+ for(let i=-2;i<=2;i++){g.beginPath();g.moveTo(i*7,-36);g.quadraticCurveTo(i*14,0,i*7,36);g.stroke()}
+ g.strokeStyle='#ffffff30';g.beginPath();g.moveTo(-30,-12);g.quadraticCurveTo(0,-20,30,-12);g.stroke();
+ // tassel
+ g.strokeStyle='#c9a24a';g.lineWidth=2;g.beginPath();g.moveTo(0,44);g.lineTo(0,62);g.stroke();
+ g.fillStyle='#c9a24a';g.fillRect(-4,60,8,12);
+ g.restore();
+}
+function bg(){
+ const g=A.x,w=A.w,h=A.h;
+ const b=g.createLinearGradient(0,0,0,h);b.addColorStop(0,'#05060f');b.addColorStop(.6,'#12112a');b.addColorStop(1,'#1c1230');
+ g.fillStyle=b;g.fillRect(0,0,w,h);
+ // moon
+ const m=g.createRadialGradient(w*.78,h*.16,2,w*.78,h*.16,h*.25);m.addColorStop(0,'rgba(190,210,255,.55)');m.addColorStop(.2,'rgba(120,150,255,.12)');m.addColorStop(1,'rgba(0,0,0,0)');
+ g.fillStyle=m;g.fillRect(0,0,w,h);
+ // mountains
+ g.fillStyle='#0b0b1c';g.beginPath();g.moveTo(0,h);
+ for(let i=0;i<=20;i++){g.lineTo(w*i/20,h*.78-Math.abs(Math.sin(i*1.7+1))*h*.14-Math.sin(i*.6)*h*.04)}
+ g.lineTo(w,h);g.fill();
+ // torii silhouette
+ const cx=w*.5,by=h*.9,tw=Math.min(w,h)*.5;
+ g.fillStyle='#07070f';g.fillRect(cx-tw*.4,by-tw*.8,tw*.07,tw*.8);g.fillRect(cx+tw*.33,by-tw*.8,tw*.07,tw*.8);
+ g.fillRect(cx-tw*.55,by-tw*.85,tw*1.1,tw*.08);g.fillRect(cx-tw*.45,by-tw*.68,tw*.9,tw*.05);
+}
+function particles(dt){
+ const g=A.x,w=A.w,h=A.h;g.globalCompositeOperation='lighter';
+ for(const f of ff){f.p+=dt*f.s;f.x+=Math.sin(f.p*.7)*.0004;f.y-=dt*.006*f.s;if(f.y<-.05){f.y=1.05;f.x=Math.random()}
+  const a=.35+.35*Math.sin(f.p*2);const x=f.x*w,y=f.y*h;
+  const r=g.createRadialGradient(x,y,0,x,y,f.r*5);r.addColorStop(0,`rgba(255,235,150,${a})`);r.addColorStop(1,'rgba(255,235,150,0)');
+  g.fillStyle=r;g.fillRect(x-f.r*5,y-f.r*5,f.r*10,f.r*10)}
+ for(let i=sparks.length-1;i>=0;i--){const p=sparks[i];p.l-=dt;if(p.l<=0){sparks.splice(i,1);continue}
+  p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=40*dt;const a=p.l/p.m;
+  g.fillStyle=`rgba(255,${200+Math.floor(a*50)},120,${a})`;g.beginPath();g.arc(p.x,p.y,p.r*a+1,0,6.28);g.fill()}
+ g.globalCompositeOperation='source-over';
+}
+function mistDraw(dt){
+ const g=A.x,w=A.w,h=A.h;
+ for(const m of mist){m.x+=m.sp*dt;if(m.x>1.4)m.x=-.4;
+  const x=m.x*w,y=m.y*h,r=m.r*Math.max(w,h);
+  const q=g.createRadialGradient(x,y,0,x,y,r);q.addColorStop(0,`rgba(150,160,220,${m.a})`);q.addColorStop(1,'rgba(150,160,220,0)');
+  g.fillStyle=q;g.fillRect(x-r,y-r*.6,r*2,r*1.2)}
+}
+function burst(x,y,n,sp){for(let i=0;i<n;i++){const a=Math.random()*6.28,v=sp*(.3+Math.random());sparks.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-30,l:1+Math.random(),m:2,r:2+Math.random()*2})}}
+function spirit(x,y,s,p){
+ const g=A.x;g.save();g.translate(x,y);g.globalCompositeOperation='lighter';
+ const R=30*s*ease(p);
+ const r=g.createRadialGradient(0,0,0,0,0,R*2.4);r.addColorStop(0,'rgba(255,250,210,.95)');r.addColorStop(.3,'rgba(255,215,110,.5)');r.addColorStop(1,'rgba(255,170,60,0)');
+ g.fillStyle=r;g.beginPath();g.arc(0,0,R*2.4,0,6.28);g.fill();
+ g.strokeStyle='rgba(255,240,180,.8)';g.lineWidth=2;
+ for(let i=0;i<5;i++){const a=t*1.4+i*1.2566;g.beginPath();g.ellipse(0,0,R*1.4,R*.5,a,0,6.28);g.stroke()}
+ const ring=(t-t0)*140*s;g.lineWidth=3;g.strokeStyle=`rgba(255,230,150,${Math.max(0,1-ring/(160*s))})`;
+ g.beginPath();g.arc(0,0,Math.max(1,ring),0,6.28);g.stroke();
+ g.restore();
+}
+function draw(dt){
+ const g=A.x,w=A.w,h=A.h;t+=dt;layout();
+ bg();mistDraw(dt);
+ const el=t-t0;
+ let cam=0;if(st==='anim')cam=ease(el/.9);else if(st==='done')cam=1-ease(el/1.4);
+ g.save();
+ if(sel>=0&&cam>0){const p=pos[sel];g.translate(p.x,p.y);const z=1+.55*cam;g.scale(z,z);g.translate(-p.x,-p.y);
+  g.translate((w/2-p.x)*cam*.55/z,(h*.42-p.y)*cam*.55/z)}
+ for(let i=0;i<10;i++){
+  const p=pos[i];const sw=Math.sin(t*.9+i*1.3)*3*p.s,bob=Math.sin(t*1.1+i)*3*p.s;
+  let warm='255,170,80',glow=.8+.12*Math.sin(t*2+i),alpha=1,dark=false;
+  if(st!=='idle'&&i!==sel){alpha=.9-.55*Math.min(1,cam)}
+  if(i===sel&&(st==='anim')&&el>.9){glow=.8+ease((el-.9)/.7)*.9}
+  if(st==='done'){
+   const wnr=K.S.winners.has(i);
+   if(wnr){warm='255,225,120';glow=1.1}else{warm='150,160,200';glow=.15;dark=true}
+   if(i!==sel)alpha=.55+.45*ease((el-.4)/.6);
+   if(i===sel&&!result){warm='150,160,200';glow=.25;dark=true}
+  }
+  if(st==='anim'&&i===sel&&el>1.6){}
+  lantern(p.x+sw,p.y+bob,p.s*(i===sel&&st!=='idle'?1:1),warm,glow,alpha,dark);
+  if(i===sel&&st==='done'&&result)spirit(p.x+sw,p.y+bob-10*p.s,p.s,Math.min(1,(el)/.5)),0;
+  if(st==='idle'&&hover===i){g.strokeStyle='#ffe29a88';g.lineWidth=2;g.beginPath();g.arc(p.x+sw,p.y+bob,p.s*52,0,6.28);g.stroke()}
+ }
+ particles(dt);
+ g.restore();
+ if(st==='anim'&&el>=1.6){st='done';t0=t;el0=t;result=K.S.winners.has(sel);if(result)burst(pos[sel].x,pos[sel].y,70,160);K.finish(result);
+  K.say((result?'Spirit light. You win 20 play credits. ':'Empty lantern. ')+'3 of 10 held spirit light. '+document.getElementById('msg').textContent.replace(/^(Win\.|No win)[^.]*\.\s?/,'').trim()+' Tap for the next round.')}
+ if(st==='anim'&&el<1.6)K.say('Lighting lantern '+(sel+1)+'... tap to skip the animation.');
+}
+let hover=-1,el0=0;
+function pick(e){
+ const r=c.getBoundingClientRect();const x=(e.clientX-r.left),y=(e.clientY-r.top);
+ let b=-1,bd=1e9;pos.forEach((p,i)=>{const d=Math.hypot(x-p.x,y-p.y);if(d<p.s*55&&d<bd){bd=d;b=i}});return b;
+}
+c.addEventListener('pointermove',e=>{hover=st==='idle'?pick(e):-1});
+c.addEventListener('pointerdown',e=>{
+ if(st==='idle'){const i=pick(e);if(i<0)return;if(!K.begin())return;sel=i;st='anim';t0=t;result=null;K.say('Lighting lantern '+(i+1)+'... tap to skip the animation.')}
+ else if(st==='anim'){t0=t-1.6}
+ else if(st==='done'&&t-t0>.5){st='idle';sel=-1;result=null;if(K.S.credits<K.STAKE)K.say('Out of play credits. Press Reset to start over with 100.');else K.say('Pick a lantern. Each round costs 10 play credits.')}
+});
+function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;draw(dt);requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+}
+
+Kit.boot(init);
+</script></body></html>
