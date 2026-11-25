@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Rune Forge Duel</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#0b0604;color:#fde8d0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
+#top{position:fixed;left:0;right:0;top:0;padding:10px 12px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;pointer-events:none}
+#ttl{font-weight:800;letter-spacing:.14em;text-transform:uppercase;font-size:clamp(13px,3.6vw,21px);color:#ffc27a;text-shadow:0 0 14px #ff6a1a}
+#ttl small{display:block;font-weight:500;letter-spacing:.03em;text-transform:none;font-size:11px;color:#c9a88a;text-shadow:none}
+.sb{display:flex;gap:8px}
+.sb div{background:#000a;border:1px solid #fff2;border-radius:10px;padding:5px 12px;text-align:center;font-size:11px;min-width:74px}
+.sb b{display:block;font-size:22px}
+#you b{color:#ffcf6a}#ai b{color:#7fd8ff}
+.sb .on{border-color:#ffffff99;box-shadow:0 0 14px #fff5}
+#bot{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:7px;background:linear-gradient(transparent,#000c 60%)}
+#msg{font-size:14px;text-align:center;min-height:19px;text-shadow:0 1px 4px #000;max-width:520px}
+.row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+button{font:inherit;font-size:13px;color:#fde8d0;background:#fff1;border:1px solid #fff3;border-radius:999px;padding:7px 14px;cursor:pointer}
+button.sel{background:#ff8a3a;color:#1a0a02;border-color:#ffb27a;font-weight:700}
+#rl{font-size:11px;color:#b99a7c;text-align:center;max-width:560px}
+#dlg{position:fixed;inset:0;background:#000b;display:none;align-items:center;justify-content:center;padding:18px}
+#dlg.on{display:flex}
+#dlg div{max-width:460px;background:#1a110c;border:1px solid #fff3;border-radius:14px;padding:18px;font-size:14px;line-height:1.5}
+#dlg h2{margin:0 0 8px;font-size:17px}#dlg p{margin:6px 0}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="top"><div id="ttl">Rune Forge Duel<small>5x5 rune tactics. Skill game.</small></div>
+<div class="sb"><div id="you"><b id="ys">0</b>you (sun)</div><div id="ai"><b id="as">0</b>forge (frost)</div></div></div>
+<div id="bot"><div id="msg"></div>
+<div class="row"><button data-d="1" class="df">Apprentice</button><button data-d="2" class="df sel">Smith</button><button data-d="4" class="df">Master</button><button id="nw">New duel</button><button id="hp">How to play</button></div>
+<div id="rl">Difficulty sets how many moves ahead the Forge looks. Free skill game, nothing to win or spend.</div></div>
+<div id="dlg"><div><h2>How to play</h2>
+<p>Take turns placing a rune on the glowing 5x5 board. The center anvil is blocked. You and the Forge each place 12 runes.</p>
+<p>When your new rune makes a straight line of 3 or more of your runes (across, down or diagonal), you score. A line of 3 scores 1, a line of 4 scores 2, and a line of 5 scores 3. Extending a line scores again, so chains build fast.</p>
+<p>When the board is full, the higher score wins. The duel alternates who starts. It is pure tactics, with no luck and no credits. Apprentice looks 1 move ahead and sometimes plays loosely, Smith looks 2 moves ahead, Master looks 4.</p>
+<button id="cl">Close</button></div></div>
+<script>
+const c=document.getElementById('c');let g,W,H;
+function fit(){const d=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;c.width=W*d;c.height=H*d;g=c.getContext('2d');g.setTransform(d,0,0,d,0,0)}
+fit();addEventListener('resize',fit);
+const $=id=>document.getElementById(id);
+const N=5,DIRS=[[1,0],[0,1],[1,1],[1,-1]];
+let B,turn,sc,depth=2,over=false,first=1,anim=[],floats=[],sparks=[],beams=[],t=0,hover=-1,thinking=false,shake=0,count=0,last=performance.now();
+function newGame(){B=Array(25).fill(0);B[12]=3;sc=[0,0,0];turn=first;count=0;over=false;anim=[];floats=[];beams=[];sparks=[];
+ first=3-first;upd();
+ if(turn===2)aiTurn();else say('Your move. Place a sun rune.')}
+function say(s){$('msg').textContent=s}
+function upd(){$('ys').textContent=sc[1];$('as').textContent=sc[2];$('you').classList.toggle('on',!over&&turn===1);$('ai').classList.toggle('on',!over&&turn===2)}
+function lineInfo(b,i,w){let pts=0,cells=[];const x=i%N,y=(i/N)|0;
+ for(const [dx,dy] of DIRS){let run=[i];
+  for(let k=1;;k++){const nx=x+dx*k,ny=y+dy*k;if(nx<0||ny<0||nx>=N||ny>=N||b[ny*N+nx]!==w)break;run.push(ny*N+nx)}
+  for(let k=1;;k++){const nx=x-dx*k,ny=y-dy*k;if(nx<0||ny<0||nx>=N||ny>=N||b[ny*N+nx]!==w)break;run.push(ny*N+nx)}
+  if(run.length>=3){pts+=run.length-2;cells.push(run)}}
+ return{pts,cells}}
+function search(b,d,who,alpha,beta,diff){ // diff = score(AI)-score(player) from AI perspective; returns best value
+ if(d===0)return 0;
+ let best=who===2?-1e9:1e9,any=false;
+ for(let i=0;i<25;i++){if(b[i]!==0)continue;any=true;
+  b[i]=who;const p=lineInfo(b,i,who).pts*(who===2?1:-1);
+  const v=p+search(b,d-1,3-who,alpha,beta);b[i]=0;
+  if(who===2){if(v>best)best=v;if(best>alpha)alpha=best}else{if(v<best)best=v;if(best<beta)beta=best}
+  if(beta<=alpha)break}
+ return any?best:0}
+function aiMove(){
+ const moves=[];for(let i=0;i<25;i++)if(B[i]===0)moves.push(i);
+ if(depth===1&&Math.random()<.3)return moves[Math.floor(Math.random()*moves.length)];
+ let bestV=-1e9,bm=[];
+ const d=Math.min(depth,moves.length);
+ for(const i of moves){B[i]=2;const v=lineInfo(B,i,2).pts+search(B,d-1,1,-1e9,1e9);B[i]=0;
+  if(v>bestV){bestV=v;bm=[i]}else if(v===bestV)bm.push(i)}
+ return bm[Math.floor(Math.random()*bm.length)]}
+function place(i,w){
+ B[i]=w;count++;const r=lineInfo(B,i,w);sc[w]+=r.pts;
+ anim.push({i,t:t,w});shake=.18;
+ const p=cellPos(i);for(let k=0;k<16;k++){const a=Math.random()*6.28,v=50+Math.random()*150;sparks.push({x:p.x,y:p.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,l:.7,m:.7,col:w===1?'255,200,90':'120,210,255'})}
+ if(r.pts>0){r.cells.forEach(run=>beams.push({cells:run,t:t,w}));floats.push({x:p.x,y:p.y,t:t,txt:'+'+r.pts,w});
+  r.cells.forEach(run=>run.forEach(ci=>{const q=cellPos(ci);for(let k=0;k<8;k++){const a=Math.random()*6.28;sparks.push({x:q.x,y:q.y,vx:Math.cos(a)*120,vy:Math.sin(a)*120-60,l:1,m:1,col:w===1?'255,170,60':'100,200,255'})}}));shake=.4}
+ upd();
+ if(count>=24){over=true;upd();const a=sc[1],b2=sc[2];say(a>b2?'You win '+a+' to '+b2+'. The forge goes quiet.':a<b2?'The Forge wins '+b2+' to '+a+'. Try another opening.':'A draw, '+a+' each.');return}
+}
+function aiTurn(){turn=2;thinking=true;upd();say('The Forge is thinking...');
+ setTimeout(()=>{const m=aiMove();thinking=false;place(m,2);if(!over){turn=1;upd();say('Your move.')}},550)}
+function geo(){const top=70,bot=130;const s=Math.min(W*.86,H-top-bot,620);return{s,x:W/2-s/2,y:top+(H-top-bot-s)/2,cs:s/N}}
+function cellPos(i){const G=geo();return{x:G.x+((i%N)+.5)*G.cs,y:G.y+(((i/N)|0)+.5)*G.cs}}
+function rune(x,y,r,w,a,glow){
+ g.save();g.translate(x,y);g.globalAlpha=a;
+ const col=w===1?'#ffd36a':'#8fe0ff';g.shadowColor=col;g.shadowBlur=glow;g.strokeStyle=col;g.lineWidth=Math.max(2,r*.12);g.lineCap='round';
+ if(w===1){g.beginPath();g.arc(0,0,r*.38,0,6.28);g.stroke();for(let k=0;k<8;k++){const an=k*.7854;g.beginPath();g.moveTo(Math.cos(an)*r*.55,Math.sin(an)*r*.55);g.lineTo(Math.cos(an)*r*(k%2?.75:.95),Math.sin(an)*r*(k%2?.75:.95));g.stroke()}
+  g.fillStyle='rgba(255,210,100,.5)';g.beginPath();g.arc(0,0,r*.2,0,6.28);g.fill()}
+ else{g.beginPath();g.moveTo(0,-r*.9);g.lineTo(r*.55,0);g.lineTo(0,r*.9);g.lineTo(-r*.55,0);g.closePath();g.stroke();g.beginPath();g.moveTo(0,-r*.5);g.lineTo(0,r*.5);g.moveTo(-r*.3,0);g.lineTo(r*.3,0);g.stroke();
+  g.fillStyle='rgba(140,220,255,.25)';g.fill()}
+ g.restore()}
+function draw(dt){
+ t+=dt;const G=geo();g.save();
+ if(shake>0){g.translate((Math.random()-.5)*shake*10,(Math.random()-.5)*shake*10);shake=Math.max(0,shake-dt)}
+ const bg=g.createRadialGradient(W/2,H*.6,10,W/2,H*.6,Math.max(W,H));bg.addColorStop(0,'#3a1608');bg.addColorStop(.5,'#150805');bg.addColorStop(1,'#050202');g.fillStyle=bg;g.fillRect(-20,-20,W+40,H+40);
+ // embers
+ g.globalCompositeOperation='lighter';
+ for(let k=0;k<40;k++){const ph=(t*.07+k*.137)%1;const x=((k*97.3)%W)+Math.sin(t+k)*18;const y=H*(1.05-ph*1.1);g.fillStyle=`rgba(255,${120+(k%5)*20},40,${(1-ph)*.6})`;g.beginPath();g.arc(x,y,1+((k*7)%3)*.6,0,6.28);g.fill()}
+ g.globalCompositeOperation='source-over';
+ // board frame
+ const pad=G.cs*.18;g.fillStyle='#1c0f0a';g.strokeStyle='#8a4a22';g.lineWidth=3;g.shadowColor='#ff6a1a';g.shadowBlur=24;
+ g.beginPath();g.roundRect(G.x-pad,G.y-pad,G.s+pad*2,G.s+pad*2,16);g.fill();g.stroke();g.shadowBlur=0;
+ for(let i=0;i<25;i++){const x=G.x+(i%N)*G.cs,y=G.y+((i/N)|0)*G.cs;
+  const gr=g.createLinearGradient(x,y,x+G.cs,y+G.cs);gr.addColorStop(0,'#33211a');gr.addColorStop(1,'#1d120d');g.fillStyle=gr;g.beginPath();g.roundRect(x+3,y+3,G.cs-6,G.cs-6,8);g.fill();
+  g.strokeStyle='rgba(255,140,60,.25)';g.lineWidth=1.5;g.stroke();
+  if(i===hover&&B[i]===0&&turn===1&&!over){g.fillStyle='rgba(255,200,120,.18)';g.fill();rune(x+G.cs/2,y+G.cs/2,G.cs*.36,1,.4,6)}
+ }
+ // anvil
+ const ap=cellPos(12);g.save();g.translate(ap.x,ap.y);const pr=1+.08*Math.sin(t*3);
+ const ag=g.createRadialGradient(0,0,2,0,0,G.cs*.6*pr);ag.addColorStop(0,'rgba(255,180,60,.9)');ag.addColorStop(1,'rgba(255,80,0,0)');g.globalCompositeOperation='lighter';g.fillStyle=ag;g.beginPath();g.arc(0,0,G.cs*.6*pr,0,6.28);g.fill();g.globalCompositeOperation='source-over';
+ g.fillStyle='#46322a';g.beginPath();const a=G.cs;g.moveTo(-a*.3,-a*.12);g.lineTo(a*.3,-a*.12);g.lineTo(a*.18,0);g.lineTo(a*.1,a*.04);g.lineTo(a*.14,a*.2);g.lineTo(-a*.14,a*.2);g.lineTo(-a*.1,a*.04);g.lineTo(-a*.18,0);g.closePath();g.fill();g.strokeStyle='#ffb36a';g.lineWidth=2;g.stroke();g.restore();
+ // runes
+ for(let i=0;i<25;i++){if(B[i]!==1&&B[i]!==2)continue;const p=cellPos(i);const an=anim.find(q=>q.i===i);let sc2=1,al=1,gl=10+4*Math.sin(t*2+i);
+  if(an){const e=Math.min(1,(t-an.t)/.28);sc2=1.6-.6*e+Math.sin(e*3.14)*.12;al=e;gl=30*(1-e)+10;const rr=(t-an.t)*G.cs*3;g.strokeStyle=B[i]===1?`rgba(255,210,110,${Math.max(0,.9-(t-an.t)*2)})`:`rgba(140,220,255,${Math.max(0,.9-(t-an.t)*2)})`;g.lineWidth=3;g.beginPath();g.arc(p.x,p.y,rr,0,6.28);g.stroke()}
+  rune(p.x,p.y,G.cs*.36*sc2,B[i],al,gl)}
+ // beams
+ g.globalCompositeOperation='lighter';
+ beams=beams.filter(b=>t-b.t<1.8);
+ for(const b of beams){const e=t-b.t;const al=Math.max(0,1-e/1.8);const p0=cellPos(b.cells[0]);const p1=cellPos(b.cells[b.cells.length-1]);
+  g.strokeStyle=b.w===1?`rgba(255,200,90,${al})`:`rgba(120,210,255,${al})`;g.lineWidth=10*al+2;g.lineCap='round';g.shadowColor=g.strokeStyle;g.shadowBlur=24;g.beginPath();g.moveTo(p0.x,p0.y);g.lineTo(p1.x,p1.y);g.stroke();g.shadowBlur=0}
+ for(let i=sparks.length-1;i>=0;i--){const p=sparks[i];p.l-=dt;if(p.l<=0){sparks.splice(i,1);continue}p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=120*dt;g.fillStyle=`rgba(${p.col},${p.l/p.m})`;g.beginPath();g.arc(p.x,p.y,2.4*(p.l/p.m)+.6,0,6.28);g.fill()}
+ g.globalCompositeOperation='source-over';
+ floats=floats.filter(f=>t-f.t<1.3);
+ for(const f of floats){const e=t-f.t;g.globalAlpha=Math.max(0,1-e/1.3);g.fillStyle=f.w===1?'#ffe08a':'#b5ecff';g.font=`800 ${G.cs*.5}px system-ui`;g.textAlign='center';g.shadowColor=g.fillStyle;g.shadowBlur=14;g.fillText(f.txt,f.x,f.y-G.cs*.4-e*40);g.shadowBlur=0;g.globalAlpha=1}
+ if(over){g.fillStyle='rgba(0,0,0,.45)';g.fillRect(0,0,W,H);g.fillStyle=sc[1]>sc[2]?'#ffe08a':sc[1]<sc[2]?'#8fe0ff':'#fff';g.font=`800 ${Math.min(W*.1,56)}px system-ui`;g.textAlign='center';g.shadowColor=g.fillStyle;g.shadowBlur=24;g.fillText(sc[1]>sc[2]?'VICTORY':sc[1]<sc[2]?'THE FORGE WINS':'DRAW',W/2,H/2);g.shadowBlur=0}
+ g.restore()}
+function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;draw(dt);requestAnimationFrame(loop)}
+function cellAt(e){const G=geo(),r=c.getBoundingClientRect();const x=Math.floor((e.clientX-r.left-G.x)/G.cs),y=Math.floor((e.clientY-r.top-G.y)/G.cs);return x<0||y<0||x>=N||y>=N?-1:y*N+x}
+c.addEventListener('pointermove',e=>{hover=cellAt(e)});
+c.addEventListener('pointerdown',e=>{if(over||thinking||turn!==1)return;const i=cellAt(e);if(i<0||B[i]!==0)return;place(i,1);if(!over)aiTurn()});
+document.querySelectorAll('.df').forEach(b=>b.onclick=()=>{depth=+b.dataset.d;document.querySelectorAll('.df').forEach(x=>x.classList.toggle('sel',x===b));if(!thinking){first=1;newGame()}});
+$('nw').onclick=()=>{if(!thinking)newGame()};
+$('hp').onclick=()=>$('dlg').classList.add('on');$('cl').onclick=()=>$('dlg').classList.remove('on');
+window.__dbg={get B(){return B},get sc(){return sc},place,get turn(){return turn},get over(){return over},cellPos};
+newGame();requestAnimationFrame(loop);
+</script></body></html>
